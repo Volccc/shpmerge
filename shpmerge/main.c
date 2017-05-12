@@ -26,6 +26,8 @@
 #define MAJOR_NAME "Major Contours"
 #define MINOR_NAME "Minor Contours"
 
+int resultCount;
+
 void proceedDBF(DBFHandle iDBF, DBFHandle oDBF) {
 	int recordCount, fieldCount, outCount;
 	DBFFieldType fType;
@@ -145,6 +147,7 @@ BOOL mergeShapes(const char* filename, const char* outname) {
 				if (iSHP == NULL) {
 					break;
 				}
+				resultCount = n;
 				SHPGetInfo(iSHP, &pnEntities, &pnShapeType, NULL, NULL);
 				for (int i = 0; i < pnEntities; i++) {
 					shape = SHPReadObject(iSHP, i);
@@ -242,6 +245,7 @@ BOOL proceedMinor(const char* filename) {
 int main(int argc, const char * argv[]) {
 	BOOL ok = (argc > 1);
 	if (ok) {
+		resultCount = 0;
 		if (!proceedIsobaths(argv[1])) {
 			fprintf(stderr, "Can't proceed isobaths %s\n", argv[1]);
 			return EXIT_FAILURE;
@@ -259,5 +263,6 @@ int main(int argc, const char * argv[]) {
 		printf("Usage: shpmerge name\n");
 	}
 
+	fprintf(stderr, "%d shapes were merged\n", resultCount);
 	return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

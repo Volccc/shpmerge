@@ -61,16 +61,18 @@ void proceedDBF(DBFHandle iDBF, DBFHandle oDBF) {
 					DBFWriteDoubleAttribute(oDBF, outCount, i, (double)DBFReadDoubleAttribute(iDBF, iRecord, i));
 					break;
 
-				case FTLogical:
-					if (outCount == 0) {
-						DBFAddField(oDBF, cTitle, FTLogical, nWidth, nDecimals);
-					}
+				default:
 					break;
-				case FTInvalid:
-					if (outCount == 0) {
-						DBFAddField(oDBF, cTitle, FTInvalid, nWidth, nDecimals);
-					}
-					break;
+//				case FTLogical:
+//					if (outCount == 0) {
+//						DBFAddField(oDBF, cTitle, FTLogical, nWidth, nDecimals);
+//					}
+//					break;
+//				case FTInvalid:
+//					if (outCount == 0) {
+//						DBFAddField(oDBF, cTitle, FTInvalid, nWidth, nDecimals);
+//					}
+//					break;
 			}
 		}
 	}

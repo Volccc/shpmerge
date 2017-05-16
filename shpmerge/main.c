@@ -26,11 +26,11 @@
 #define MAJOR_NAME "Major Contours"
 #define MINOR_NAME "Minor Contours"
 
-#define MAX_CONGIG_DEPTH 100
+#define MAX_CONFIG_DEPTH 100
 
 int resultCount;
 
-static int colorDef[MAX_CONGIG_DEPTH] = {
+static int colorDef[MAX_CONFIG_DEPTH] = {
 	// 0	1		2		3
 	0x400,	0x400,	0x401,	0x401,
 	// 4	5		6		7
@@ -43,7 +43,7 @@ static int colorDef[MAX_CONGIG_DEPTH] = {
 	0x408,	0x408,	0x409,	0x409,
 	// 20	21		22		23
 	0x40A,	0x40A,	0x40B,	0x40B,
-	// 24	25
+	// 24	25		26		27
 	0x40C,	0x40D
 };
 
@@ -51,7 +51,7 @@ static int colorDef[MAX_CONGIG_DEPTH] = {
 #define MINCAT_FIELD "MIN_CAT"
 
 int getAreaType(int d) {
-	if (d < 0 || d > MAX_CONGIG_DEPTH) {
+	if (d < 0 || d > MAX_CONFIG_DEPTH) {
 		return 0x400;
 	}
 	return colorDef[d];
@@ -135,7 +135,7 @@ void readConfig(const char* strExec) {
 	
 	ptr = (char*)strExec;
 	do {
-		ptr = strstr(ptr, "shpmerge") + 7;
+		ptr = strstr(ptr, "shpmerge") + 8;
 	} while (strlen(ptr) > 4);
 	*ptr = 0;
 	char* fname = malloc(_MAX_PATH);
@@ -143,7 +143,7 @@ void readConfig(const char* strExec) {
 	
 	FILE* fd = fopen(fname, "r");
 	if (!fd) {
-		for (int i = 0; i < MAX_CONGIG_DEPTH; ++i) {
+		for (int i = 0; i < MAX_CONFIG_DEPTH; ++i) {
 			if (colorDef[i] == 0) {
 				colorDef[i] = defaultColor;
 			}
@@ -153,7 +153,7 @@ void readConfig(const char* strExec) {
 	
 	char buf[256];
 	
-	memset(colorDef, 0, MAX_CONGIG_DEPTH * sizeof(int));
+	memset(colorDef, 0, MAX_CONFIG_DEPTH * sizeof(int));
 	
 	while (fgets(buf, 256, fd)) {
 		char* ps = buf;
@@ -178,7 +178,7 @@ void readConfig(const char* strExec) {
 			colorDef[dep] = color;
 		}
 	}
-	for (int i = 0; i < MAX_CONGIG_DEPTH; ++i) {
+	for (int i = 0; i < MAX_CONFIG_DEPTH; ++i) {
 		if (colorDef[i] == 0) {
 			colorDef[i] = defaultColor;
 		}
@@ -403,16 +403,17 @@ int main(int argc, const char * argv[]) {
 	BOOL bType = FALSE;
 	BOOL ok = TRUE;
 	
-	char* argName;
-	if (argc == 1) {
+	char* argName = NULL;
+	if (argc == 2) {
 		// Merge only
 		argName = (char*)argv[1];
 	}
-	else if (argc == 2) {
+	else if (argc == 3) {
 		// Assume -t to correct type
-		if (argv[1][0] == '-' && tolower(argv[1][0]) == 't' && strlen(argv[1]) == 2) {
+		readConfig(argv[0]);
+		if (argv[1][0] == '-' && tolower(argv[1][1]) == 't' && strlen(argv[1]) == 2) {
 			bType = TRUE;
-			argName = (char*)argv[1];
+			argName = (char*)argv[2];
 		}
 		else {
 			ok = FALSE;
@@ -423,16 +424,16 @@ int main(int argc, const char * argv[]) {
 	}
 	if (ok) {
 		resultCount = 0;
-		if (!proceedIsobaths(argv[1])) {
-			fprintf(stderr, "Can't proceed isobaths %s\n", argv[1]);
+		if (!proceedIsobaths(argName)) {
+			fprintf(stderr, "Can't proceed isobaths %s\n", argName);
 			return EXIT_FAILURE;
 		}
-		if (!proceedMajor(argv[1])) {
-			fprintf(stderr, "Can't proceed Major contours %s\n", argv[1]);
+		if (!proceedMajor(argName)) {
+			fprintf(stderr, "Can't proceed Major contours %s\n", argName);
 			return EXIT_FAILURE;
 		}
-		if (!proceedMinor(argv[1])) {
-			fprintf(stderr, "Can't proceed Minor contours %s\n", argv[1]);
+		if (!proceedMinor(argName)) {
+			fprintf(stderr, "Can't proceed Minor contours %s\n", argName);
 			return EXIT_FAILURE;
 		}
 		// TYPE correction

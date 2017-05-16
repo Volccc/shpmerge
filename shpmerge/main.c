@@ -400,7 +400,27 @@ BOOL proceedMinor(const char* filename) {
 }
 
 int main(int argc, const char * argv[]) {
-	BOOL ok = (argc > 1);
+	BOOL bType = FALSE;
+	BOOL ok = TRUE;
+	
+	char* argName;
+	if (argc == 1) {
+		// Merge only
+		argName = (char*)argv[1];
+	}
+	else if (argc == 2) {
+		// Assume -t to correct type
+		if (argv[1][0] == '-' && tolower(argv[1][0]) == 't' && strlen(argv[1]) == 2) {
+			bType = TRUE;
+			argName = (char*)argv[1];
+		}
+		else {
+			ok = FALSE;
+		}
+	}
+	else {
+		ok = FALSE;
+	}
 	if (ok) {
 		resultCount = 0;
 		if (!proceedIsobaths(argv[1])) {
@@ -416,16 +436,18 @@ int main(int argc, const char * argv[]) {
 			return EXIT_FAILURE;
 		}
 		// TYPE correction
-		DBFHandle handle = openDb();
-		if (!proceedType(handle)) {
-			fprintf(stderr, "Can't correct TYPE\n");
-			return EXIT_FAILURE;
+		if (bType) {
+			DBFHandle handle = openDb();
+			if (!proceedType(handle)) {
+				fprintf(stderr, "Can't correct TYPE\n");
+				return EXIT_FAILURE;
+			}
 		}
 	}
 	else {
 		printf("Usage: shpmerge name\n");
 	}
-
+	
 	fprintf(stderr, "%d shapes were merged\n", resultCount);
 	return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

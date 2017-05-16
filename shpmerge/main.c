@@ -26,7 +26,164 @@
 #define MAJOR_NAME "Major Contours"
 #define MINOR_NAME "Minor Contours"
 
+#define MAX_CONGIG_DEPTH 100
+
 int resultCount;
+
+static int colorDef[MAX_CONGIG_DEPTH] = {
+	// 0	1		2		3
+	0x400,	0x400,	0x401,	0x401,
+	// 4	5		6		7
+	0x402,	0x402,	0x403,	0x403,
+	// 8	9		10		11
+	0x404,	0x404,	0x405, 0x405,
+	// 12	13		14		15
+	0x406,	0x406,	0x407, 0x407,
+	// 16	17		18		19
+	0x408,	0x408,	0x409,	0x409,
+	// 20	21		22		23
+	0x40A,	0x40A,	0x40B,	0x40B,
+	// 24	25
+	0x40C,	0x40D
+};
+
+#define TYPE_FIELD "TYPE"
+#define MINCAT_FIELD "MIN_CAT"
+
+int getAreaType(int d) {
+	if (d < 0 || d > MAX_CONGIG_DEPTH) {
+		return 0x400;
+	}
+	return colorDef[d];
+}
+
+int getDepType(const char* buf)
+{
+	int dep;
+	int ns = sscanf(buf, "%d", &dep);
+	if (ns != 1) {
+		printf("Wrong MIN_CAT!!!");
+	}
+	else {
+		return getAreaType(dep);
+	}
+	
+	return 0x400;
+}
+
+BOOL proceedType(DBFHandle handle) {
+	if (handle == NULL) {
+		return FALSE;
+	}
+	int count = DBFGetRecordCount(handle);
+	
+	int typeIndex = DBFGetFieldIndex(handle, TYPE_FIELD);
+	int mincatIndex = DBFGetFieldIndex(handle, MINCAT_FIELD);
+	
+	int newtype = 0;
+	const char* sMinCat;
+	
+	for (int i = 0; i < count; i++) {
+		sMinCat = DBFReadStringAttribute(handle, i, mincatIndex);
+		newtype = getDepType(sMinCat);
+		
+		DBFWriteIntegerAttribute(handle, i, typeIndex, newtype);
+//		printf("Category: %s; New type: %d (0x%x)\n", sMinCat, newtype, newtype);
+	}
+	DBFClose(handle);
+	printf("TYPE corrected\n");
+	return TRUE;
+}
+
+BOOL checkType(DBFHandle handle) {
+	int index;
+ 
+	index = DBFGetFieldIndex(handle, TYPE_FIELD);
+	if (index >= 0) {
+		// RM1, nothing to do
+		return 1;
+	}
+	index = DBFAddField(handle, TYPE_FIELD, FTInteger, 11, 0);
+	if (index >= 0) {
+		return 1;
+	}
+	
+	return 0;
+}
+
+DBFHandle openDb() {
+	char* outName = malloc(_MAX_PATH);
+	sprintf(outName, "merged_%s.dbf", ISOBATHS_NAME);
+
+	DBFHandle handle = DBFOpen(outName, "rb+");
+	if (handle == NULL) {
+		fprintf(stderr, "Can't open %s\n", outName);
+	}
+	else if (!checkType(handle)) {
+		DBFClose(handle);
+		fprintf(stderr, "Unsupported format of %s\n", outName);
+		handle = NULL;
+	};
+	free(outName);
+	
+	return handle;
+}
+
+void readConfig(const char* strExec) {
+	char* ptr;
+	int defaultColor = 0x40D;
+	
+	ptr = (char*)strExec;
+	do {
+		ptr = strstr(ptr, "shpmerge") + 7;
+	} while (strlen(ptr) > 4);
+	*ptr = 0;
+	char* fname = malloc(_MAX_PATH);
+	sprintf(fname, "%s.cfg", strExec);
+	
+	FILE* fd = fopen(fname, "r");
+	if (!fd) {
+		for (int i = 0; i < MAX_CONGIG_DEPTH; ++i) {
+			if (colorDef[i] == 0) {
+				colorDef[i] = defaultColor;
+			}
+		}
+		return;
+	}
+	
+	char buf[256];
+	
+	memset(colorDef, 0, MAX_CONGIG_DEPTH * sizeof(int));
+	
+	while (fgets(buf, 256, fd)) {
+		char* ps = buf;
+		while (isspace(*ps)) {
+			++ps;
+		}
+		if (*ps == ';') {
+			continue;
+		}
+		int dep, color;
+		if (sscanf(ps, "%d", &dep) != 1) {
+			continue;
+		}
+		ptr = strstr(ps, ":") + 1;
+		if (sscanf(ptr, "%x", &color) != 1) {
+			continue;
+		};
+		if (dep == 100) {
+			defaultColor = color;
+		}
+		else {
+			colorDef[dep] = color;
+		}
+	}
+	for (int i = 0; i < MAX_CONGIG_DEPTH; ++i) {
+		if (colorDef[i] == 0) {
+			colorDef[i] = defaultColor;
+		}
+	}
+}
 
 void proceedDBF(DBFHandle iDBF, DBFHandle oDBF) {
 	int recordCount, fieldCount, outCount;
@@ -256,6 +413,12 @@ int main(int argc, const char * argv[]) {
 		}
 		if (!proceedMinor(argv[1])) {
 			fprintf(stderr, "Can't proceed Minor contours %s\n", argv[1]);
+			return EXIT_FAILURE;
+		}
+		// TYPE correction
+		DBFHandle handle = openDb();
+		if (!proceedType(handle)) {
+			fprintf(stderr, "Can't correct TYPE\n");
 			return EXIT_FAILURE;
 		}
 	}

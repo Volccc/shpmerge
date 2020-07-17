@@ -238,37 +238,49 @@ void proceedDBF(DBFHandle iDBF, DBFHandle oDBF) {
 	DBFClose(iDBF);
 }
 
-BOOL mergeDB(const char* filename, const char* outname) {
+BOOL mergeDB(char* filename[], const char* outname, const char* suffix) {
 	DBFHandle iDBF;
 	DBFHandle oDBF;
 	BOOL retval = TRUE;
 	
-	char *mergedName = malloc(_MAX_PATH);
-	sprintf(mergedName, "%s.dbf", filename);
 	oDBF = DBFCreate(outname);
-	
-	iDBF = DBFOpen(mergedName, "rb");
-	if (iDBF == NULL) {
-		retval = FALSE;
+	if (oDBF == NULL) {
+		return FALSE;
 	}
-	else {
-		proceedDBF(iDBF, oDBF);
-		// Try to add files, the same name with 2,3, etc at end
-		for (int n = 2; ;++n) {
-			sprintf(mergedName, "%s%d.dbf", filename, n);
-			iDBF = DBFOpen(mergedName, "rb");
-			if (iDBF == NULL) {
-				break;
-			}
+	
+	// Main cycle
+	//
+	char *mergedName = malloc(_MAX_PATH);
+	int index = 0;
+	while (filename[index] != NULL) {
+		char* currentName = filename[index];
+		++index;
+		sprintf(mergedName, "%s_%s.dbf", currentName, suffix);
+		iDBF = DBFOpen(mergedName, "rb");
+		if (iDBF == NULL) {
+			retval = FALSE;
+			break;
+		}
+		else {
 			proceedDBF(iDBF, oDBF);
+			// Try to add files, the same name with 2,3, etc at end
+			for (int n = 2; ;++n) {
+				sprintf(mergedName, "%s_%s%d.dbf", currentName, suffix, n);
+				iDBF = DBFOpen(mergedName, "rb");
+				if (iDBF == NULL) {
+					break;
+				}
+				proceedDBF(iDBF, oDBF);
+			}
 		}
 	}
 	
 	DBFClose(oDBF);
+	free(mergedName);
 	return TRUE;
 }
 
-BOOL mergeShapes(const char* filename, const char* outname) {
+BOOL mergeShapes(char* filename[], const char* outname, const char* suffix) {
 	SHPHandle iSHP;
 	SHPHandle oSHP;
 	SHPObject	*shape;
@@ -276,62 +288,82 @@ BOOL mergeShapes(const char* filename, const char* outname) {
 	BOOL retval = TRUE;
 	
 	char *mergedName = malloc(_MAX_PATH);
-	sprintf(mergedName, "%s.shp", filename);
-	
+	sprintf(mergedName, "%s_%s.shp", filename[0], suffix);
+
+	// Get shape type from 1-st file
 	iSHP = SHPOpen(mergedName, "rb");
-	
 	if (iSHP == NULL) {
-		retval = FALSE;
+		free(mergedName);
+		return FALSE;
 	}
-	else {
+	SHPGetInfo(iSHP, &pnEntities, &pnShapeType, NULL, NULL);
+	SHPClose(iSHP);
+
+	oSHP = SHPCreate(outname, pnShapeType);
+	if (oSHP == NULL) {
+		free(mergedName);
+		return FALSE;
+	}
+	
+	// Main cycle
+	//
+	int index = 0;
+	while (filename[index] != NULL) {
+		char* currentName = filename[index];
+		++index;
+		sprintf(mergedName, "%s_%s.shp", currentName, suffix);
+		
+		iSHP = SHPOpen(mergedName, "rb");
 		SHPGetInfo(iSHP, &pnEntities, &pnShapeType, NULL, NULL);
-		oSHP = SHPCreate(outname, pnShapeType);
-		if (oSHP == NULL) {
+		
+		if (iSHP == NULL) {
 			retval = FALSE;
+			break;
 		}
-		else {
+		
+		for (int i = 0; i < pnEntities; i++) {
+			shape = SHPReadObject(iSHP, i);
+			SHPWriteObject(oSHP, -1, shape);
+			SHPDestroyObject(shape);
+		}
+		SHPClose(iSHP);
+		++resultCount;
+		fprintf(stderr, "File %s was merged in %s\n", mergedName, outname);
+
+		// Try to add files, the same name with 2,3, etc at end
+		for (int n = 2; ;++n) {
+			sprintf(mergedName, "%s_%s%d.shp", currentName, suffix, n);
+			iSHP = SHPOpen(mergedName, "rb");
+			if (iSHP == NULL) {
+				break;
+			}
+			SHPGetInfo(iSHP, &pnEntities, &pnShapeType, NULL, NULL);
 			for (int i = 0; i < pnEntities; i++) {
 				shape = SHPReadObject(iSHP, i);
 				SHPWriteObject(oSHP, -1, shape);
 				SHPDestroyObject(shape);
 			}
 			SHPClose(iSHP);
-			
-			// Try to add files, the same name with 2,3, etc at end
-			for (int n = 2; ;++n) {
-				sprintf(mergedName, "%s%d.shp", filename, n);
-				iSHP = SHPOpen(mergedName, "rb");
-				if (iSHP == NULL) {
-					break;
-				}
-				resultCount = n;
-				SHPGetInfo(iSHP, &pnEntities, &pnShapeType, NULL, NULL);
-				for (int i = 0; i < pnEntities; i++) {
-					shape = SHPReadObject(iSHP, i);
-					SHPWriteObject(oSHP, -1, shape);
-					SHPDestroyObject(shape);
-				}
-				SHPClose(iSHP);
-			}
+			++resultCount;
+			fprintf(stderr, "File %s was merged in %s\n", mergedName, outname);
 		}
-		SHPClose(oSHP);
 	}
+	SHPClose(oSHP);
 	
 	free(mergedName);
 	return retval;
-	
 }
 
 #define BUF_SIZE 1024
 
-BOOL copyPRJ(const char* filename, char* outname) {
+BOOL copyPRJ(const char* filename, char* outname, const char*  suffix) {
 	FILE *inputFd;
 	FILE *outputFd;
 	int numRead;
 	char buf[BUF_SIZE];
- 
+
 	char *mergedName = malloc(_MAX_PATH);
-	sprintf(mergedName, "%s.prj", filename);
+	sprintf(mergedName, "%s_%s.prj", filename, suffix);
 	sprintf(outname, "%s.prj", outname);
 
 	inputFd = fopen(mergedName, "rb");
@@ -353,16 +385,16 @@ BOOL copyPRJ(const char* filename, char* outname) {
 	return TRUE;
 }
 
-BOOL mergeFiles(const char* filename, char* outname) {
-	if (!mergeShapes(filename, outname)) {
+BOOL mergeFiles(char* filename[], char* outname, const char* suffix) {
+	if (!mergeShapes(filename, outname, suffix)) {
 		fprintf(stderr, "Merge shapes error\n");
 		return FALSE;
 	}
-	if (!mergeDB(filename, outname)) {
+	if (!mergeDB(filename, outname, suffix)) {
 		fprintf(stderr, "Merge database error\n");
 		return FALSE;
 	}
-	if (!copyPRJ(filename, outname)) {
+	if (!copyPRJ(filename[0], outname, suffix)) {
 		fprintf(stderr, "Merge prj error\n");
 		return FALSE;
 	}
@@ -370,70 +402,82 @@ BOOL mergeFiles(const char* filename, char* outname) {
 	return TRUE;
 }
 
-BOOL proceed(const char* filename, const char* suffix) {
-	char* mergedName;
+BOOL proceed(char* filename[], const char* suffix) {
+//	char* mergedName;
 	char* outName;
 	
-	mergedName = malloc(_MAX_PATH);
-	sprintf(mergedName, "%s_%s", filename, suffix);
+//	mergedName = malloc(_MAX_PATH);
+//	sprintf(mergedName, "%s_%s", filename[0], suffix);
 	
 	outName = malloc(_MAX_PATH);
 	sprintf(outName, "merged_%s", suffix);
 	
-	BOOL ok = mergeFiles(mergedName, outName);
+	BOOL ok = mergeFiles(filename, outName, suffix);
 	
-	free(mergedName);
+//	free(mergedName);
 	free(outName);
 	return ok;
 }
 
-BOOL proceedIsobaths(const char* filename) {
+BOOL proceedIsobaths(char** filename) {
 	return proceed(filename, ISOBATHS_NAME);
 }
 
-BOOL proceedMajor(const char* filename) {
+BOOL proceedMajor(char** filename) {
 	return proceed(filename, MAJOR_NAME);
 }
 
-BOOL proceedMinor(const char* filename) {
+BOOL proceedMinor(char** filename) {
 	return proceed(filename, MINOR_NAME);
 }
 
 int main(int argc, const char * argv[]) {
 	BOOL bType = FALSE;
 	BOOL ok = TRUE;
+	int argIndex = 1;
 	
-	char* argName = NULL;
-	if (argc == 2) {
-		// Merge only
-		argName = (char*)argv[1];
-	}
-	else if (argc == 3) {
-		// Assume -t to correct type
-		readConfig(argv[0]);
-		if (argv[1][0] == '-' && tolower(argv[1][1]) == 't' && strlen(argv[1]) == 2) {
-			bType = TRUE;
-			argName = (char*)argv[2];
-		}
-		else {
-			ok = FALSE;
-		}
-	}
-	else {
+	char** argName = NULL;
+	if (argc < 2) {
 		ok = FALSE;
 	}
+	else {
+		readConfig(argv[0]);
+		// Assume -t to correct type
+		if (argv[1][0] == '-' && tolower(argv[1][1]) == 't' && strlen(argv[1]) == 2) {
+			bType = TRUE;
+			argIndex = 2;
+		}
+		if (argIndex+1 > argc) {
+			ok = FALSE;
+		}
+		else {
+			// Create list of files now
+			argName = malloc(sizeof(char*) * (argc - argIndex + 1));
+			char** ptr = argName;
+			for (int i = argIndex; i < argc; ++i) {
+				*ptr++ = (char*)argv[i];
+			}
+			*ptr = NULL;
+		}
+	}
+	
+	//char **ptr2 = argname;
+	//while (*ptr2 != null) {
+	//	fprintf(stderr, "file %s\n", *ptr2);
+	//	*ptr2++;
+	//}
 	if (ok) {
 		resultCount = 0;
 		if (!proceedIsobaths(argName)) {
-			fprintf(stderr, "Can't proceed isobaths %s\n", argName);
+			fprintf(stderr, "Can't proceed isobaths\n");
 			return EXIT_FAILURE;
 		}
 		if (!proceedMajor(argName)) {
-			fprintf(stderr, "Can't proceed Major contours %s\n", argName);
+			fprintf(stderr, "Can't proceed Major contours\n");
 			return EXIT_FAILURE;
 		}
 		if (!proceedMinor(argName)) {
-			fprintf(stderr, "Can't proceed Minor contours %s\n", argName);
+			fprintf(stderr, "Can't proceed Minor contours\n");
 			return EXIT_FAILURE;
 		}
 		// TYPE correction
